@@ -16,61 +16,81 @@
 """
 Handles all commands that start with 'cfy plugins'
 """
+import os
+import json
+import tarfile
 
 from cloudify_cli import utils
+from cloudify_cli import messages
 from cloudify_cli.logger import get_logger
 from cloudify_cli.utils import print_table
 from cloudify_cli.exceptions import CloudifyCliError
 
-# todo(adaml): merge with blueprints
-SUPPORTED_ARCHIVE_TYPES = ['zip', 'tar', 'tar.gz', 'tar.bz2']
+
+def validate(plugin_path):
+    logger = get_logger()
+
+    logger.info(
+        messages.VALIDATING_PLUGIN.format(plugin_path.name))
+    with tarfile.open(plugin_path) as tar:
+        tar_members = tar.getmembers()
+        module_json_path = os.path.join(tar_members[0].name, 'module.json')
+        try:
+            module_member = tar.getmember(module_json_path)
+        except KeyError:
+            raise CloudifyCliError(messages.VALIDATING_PLUGIN_FAILED
+                                   .format(plugin_path, "'module.json' was not"
+                                                        " found in archive"))
+        try:
+            json.loads(tar.extractfile(module_member).read())
+        except ValueError:
+            raise CloudifyCliError(messages.VALIDATING_PLUGIN_FAILED
+                                   .format(plugin_path, "'module.json' is not"
+                                                        " a valid json"))
+    # todo(adaml): which plugin json values should be validated
+    logger.info(messages.VALIDATING_PLUGIN_SUCCEEDED)
 
 
 def delete(plugin_id):
     logger = get_logger()
     management_ip = utils.get_management_server_ip()
-    logger.info("Deleting plugin '{0}' from management server {1}"
-                .format(plugin_id, management_ip))
+    logger.info(messages.PLUGIN_DELETE.format(plugin_id, management_ip))
     client = utils.get_rest_client(management_ip)
     client.plugins.delete(plugin_id)
-    logger.info('Deleted plugin successfully')
+    logger.info(messages.PLUGIN_DELETE_SUCCEEDED)
 
 
 def upload(plugin_path, plugin_id):
     logger = get_logger()
     management_ip = utils.get_management_server_ip()
-    for archive_type in SUPPORTED_ARCHIVE_TYPES:
-        if plugin_path.name.endswith('.{0}'.format(archive_type)):
-            break
-    else:
+    if not plugin_path.name.endswith('.{0}'.format('tar.gz')):
         raise CloudifyCliError(
             "Can't publish archive {0} - it's of an unsupported archive type. "
-            "Supported archive types: {1}".format(plugin_path.name,
-                                                  SUPPORTED_ARCHIVE_TYPES))
-    logger.info("Uploading plugin '{0}' at management server {1}"
+            "Only tar.gz is supported".format(plugin_path.name))
+    validate(plugin_path)
+    logger.info(messages.UPLOADING_PLUGIN
                 .format(plugin_path.name, management_ip))
     client = utils.get_rest_client(management_ip)
     plugin = client.plugins.upload(plugin_path.name, plugin_id)
-    logger.info("Uploaded plugin, plugin's id is: {0}"
-                .format(plugin.id))
+    logger.info(messages.UPLOADING_PLUGIN_SUCCEEDED.format(plugin.id))
 
 
 def download(plugin_id, output):
     logger = get_logger()
     management_ip = utils.get_management_server_ip()
-    logger.info("Downloading plugin '{0}' ...".format(plugin_id))
+    logger.info(messages.DOWNLOADING_PLUGIN.format(plugin_id))
     client = utils.get_rest_client(management_ip)
     target_file = client.plugins.download(plugin_id, output)
-    logger.info("plugin '{0}' has been downloaded successfully as '{1}'"
-                .format(plugin_id, target_file))
+    logger.info(messages.DOWNLOADING_PLUGIN_SUCCEEDED.format(target_file))
 
 
 def ls():
     logger = get_logger()
     management_ip = utils.get_management_server_ip()
     client = utils.get_rest_client(management_ip)
-    logger.info('Getting plugins list... [manager={0}]'
-                .format(management_ip))
-    pt = utils.table(['id', 'uploaded_at'],
+    logger.info(messages.PLUGINS_LIST.format(management_ip))
+    pt = utils.table(['id', 'archive_name', 'module_name', 'module_source',
+                      'module_version', 'supported_platform', 'wheels',
+                      'uploaded_at'],
                      data=client.plugins.list())
     print_table('plugins:', pt)
