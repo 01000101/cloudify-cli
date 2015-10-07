@@ -58,6 +58,20 @@ function build_rpm() {
     # sudo mv *.rpm $(ls *.rpm | sed 's|_|-|g')
 }
 
+function clone_commercial_plugins() {
+	###
+	# This clones the commercial plugins for offline usage
+	###
+	git clone https://${GITHUB_USERNAME}:${GITHUB_PASSWORD}@github.com/cloudify-cosmo/cloudify-vsphere-plugin.git /tmp/cloudify-vsphere-plugin
+	cd /tmp/cloudify-vsphere-plugin
+	git checkout -b build_branch ${PLUGINS_TAG_NAME}
+
+	git clone https://${GITHUB_USERNAME}:${GITHUB_PASSWORD}@github.com/cloudify-cosmo/cloudify-softlayer-plugin.git /tmp/cloudify-softlayer-plugin
+	cd /tmp/cloudify-softlayer-plugin
+	git checkout -b build_branch ${PLUGINS_TAG_NAME}
+
+}
+
 function upload_to_s3() {
     ###
     # This will upload both the artifact and md5 files to the relevant bucket.
@@ -101,6 +115,7 @@ if which yum; then
     else
         install_py27
     fi
+    clone_commercial_plugins
     build_rpm
 fi
 
